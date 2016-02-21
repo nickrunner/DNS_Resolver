@@ -15,14 +15,14 @@ typedef struct dnshdr{
 	uint8_t rd: 1;	//recursion bit
 	uint8_t tc: 1;	//truncation bit
 	uint8_t aa: 1;	//authoratative answer
-	uint8_t opcode: 4;	
-	uint8_t qr: 1;
-	uint8_t rcode: 4;
-	uint8_t cd:1;
-	uint8_t ad:1;
-	uint8_t z:1;
-	uint16_t qcount;
-	uint16_t ancount;
+	uint8_t opcode: 4;	//purpose of message
+	uint8_t qr: 1;		//query resopnse flag
+	uint8_t rcode: 4;	//response code
+	uint8_t cd:1;		//checking disabled
+	uint8_t ad:1;		//authenticated data
+	uint8_t z:1;		
+	uint16_t qcount;	//# of question entries
+	uint16_t ancount;	//number of answer entries
 	uint16_t authcount;
 	uint16_t addcount;
 }dnshdr;
@@ -95,12 +95,12 @@ int main(int argc, char** argv){
 	dig_client_addr.sin_addr.s_addr = INADDR_ANY;
 
 	root_server_addr.sin_family = AF_INET;
-	root_server_addr.sin_port = htons(port);
+	root_server_addr.sin_port = htons(53);
 	root_server_addr.sin_addr.s_addr  = inet_addr("8.8.8.8");
 
 	bind(sockfd, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
 
-	int dig_len = sizeof(dig_client_addr);
+	socklen_t dig_len = sizeof(dig_client_addr);
 
 	char buf[BUF_SIZE];
 	//Receive data from dig
@@ -118,11 +118,16 @@ int main(int argc, char** argv){
 	int namelength = print_reply(buf);
 
 	//Unset recursion bit
-	//recvhdr.rd = 1;
-
+	recvhdr.rd = 0;
+	memcpy(&recvhdr, buf, 12);
 	//Forward to root server
 
 	bind(sockfd, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
+	//Point to the query portion of the message
+	//char *qname 
+	//Encode name to DNS format
+	//Specify type 
+	//Specify class
 	sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
 	//memset(buf,0,BUF_SIZE);
 	char recvbuf [BUF_SIZE];

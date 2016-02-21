@@ -148,7 +148,7 @@ int main(int argc, char** argv){
 	}
 	int curpos = 12;
 	curpos = printquery(curpos, recvbuf);
-	for(int i=0 i<ancount; i++){
+	for(int i=0; i<ancount; i++){
 		printf("Answer %d\n", i);
 		curpos = printreply(curpos, recvbuf);
 	}
