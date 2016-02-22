@@ -4,10 +4,16 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <string.h>
+#include <iostream>
+#include <vector>
 
 #define BUF_SIZE 512
 #define TYPE_A 1
 #define CLASS_IN 1
+#define AUTH_LENGTH 16
+
+using namespace std;
 
 //DNS header
 typedef struct dnshdr{
@@ -26,6 +32,21 @@ typedef struct dnshdr{
 	uint16_t authcount;
 	uint16_t addcount;
 }dnshdr;
+
+typedef struct R_DATA
+{
+	unsigned short type;
+	unsigned short _class;
+	unsigned int ttl;
+	unsigned short data_len;
+}R_DATA;
+
+typedef struct RES_RECORD
+{
+	unsigned char *name;
+	//struct *R_DATA;
+	unsigned char * fuck;
+}RES_RECORD;
 
 int decodename(char* buf, int pos, char* dst){
   int start=pos;
@@ -78,11 +99,22 @@ int print_reply(char* buf){
 	
 }
 
-void print_buf(char* buf, int pos, int len){
+void get_ip(char* buf, int pos, int len, vector<string>& root_hints){
 	int i=0;
-	for(i=0; i<len; i++){
-		printf("\n%x", buf[pos+i]);
+	char tmp[5];
+	string s;
+	for(i=12; i<len; i++){
+
+		sprintf(tmp, "%u", (unsigned char)buf[pos+i]);
+		//printf("%s", tmp );
+		s += tmp;
+		//s += itoa(buf[pos+i]);
+		if(i != len-1){
+			s += '.';
+		}
 	}
+	root_hints.push_back(s);
+	cout << "test: " << s << endl;
 }
 
 int main(int argc, char** argv){
@@ -145,9 +177,7 @@ int main(int argc, char** argv){
 
 	while(answers == 0){
 
-		bind(sockfd, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
 		sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
-		//memset(buf,0,BUF_SIZE);
 		char recvbuf [BUF_SIZE];
 		socklen_t root_len = sizeof(root_server_addr);
 		recvfrom(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&root_server_addr, &root_len);
@@ -166,45 +196,28 @@ int main(int argc, char** argv){
 
 		uint16_t ancount = ntohs(replyheader.ancount);		//convert the unsigned short integer netshort from network byte
 		uint16_t authcount = ntohs(replyheader.authcount);
+		uint16_t addcount = ntohs(replyheader.addcount);
 		if(ancount == 0){
 			printf("Did not recieve any answers\n");
 		}
-		int curpos = 12;
-		curpos = printquery(curpos, recvbuf);
-		for(int i=0; i<ancount; i++){
-			printf("Answer %d\n", i);
-			//curpos = printreply(curpos, recvbuf);
-		}
-		int pos = 0;
-		int length = 0;
-		int j=0;
+		
+		int pos = 12 + namelength + 4;
 		
 		if(authcount == 0){
 			printf("Auth Count = 0\n");
 		}
 		for(int i=0; i<authcount; i++){
-			length = 0;
-			while(recvbuf[j] != 0xFFFFFFC0){
-				pos++;
-				j++;
-				printf("%x\n", recvbuf[j]);
-				if(pos >= BUF_SIZE){
-					break;
-				}
-			}
-			j++;
-			while(recvbuf[j] != 0xFFFFFFC0){
-				length++;
-				printf("%x\n", recvbuf[j]);
-				if(pos+length >= BUF_SIZE){
-					break;
-				}
-				j++;
-			}
-			printf("\n\n\nauthoratative nameserver: %d \n\n", i);
-			print_buf(recvbuf, pos, length);
-			pos += length;
+			//printf("\n\n\nauthoratative nameserver: %d \n\n", i);
+			//print_buf(recvbuf, pos, AUTH_LENGTH);
+			pos += AUTH_LENGTH;
 		}
+		vector<string> root_hints;
+		for(int i=0; i<addcount; i++){
+			printf("\n\n\nAdditional Resource: %d\n\n", i);
+			get_ip(recvbuf, pos, AUTH_LENGTH, root_hints);
+			pos += AUTH_LENGTH;
+		}
+
 		answers = ancount;
 		if(answers == 0){
 			//find better server to ask
