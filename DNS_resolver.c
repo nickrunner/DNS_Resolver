@@ -11,7 +11,7 @@
 #define BUF_SIZE 512
 #define TYPE_A 1
 #define CLASS_IN 1
-#define AUTH_LENGTH 16
+#define ADD_LENGTH 16
 
 using namespace std;
 
@@ -117,6 +117,18 @@ void get_ip(char* buf, int pos, int len, vector<string>& root_hints){
 	cout << "test: " << s << endl;
 }
 
+//pos should be the begining of the authoritative name server
+int get_data_length(int namelength, int pos, char* buf){
+	uint16_t ret=0;
+	namelength /= 8;
+	int rdLenIndex = pos + namelength + 9;
+	//memcpy(&ret, &buf[rdLenIndex], );
+	ret = buf[rdLenIndex];
+	printf("namelength: %d\n",namelength);
+	printf("data length: %d\n\n", ret);
+	return ret + 2 + 2 + 2 + 4 + namelength;
+}
+
 int main(int argc, char** argv){
 	int port = 9875;
 
@@ -181,7 +193,7 @@ int main(int argc, char** argv){
 		char recvbuf [BUF_SIZE];
 		socklen_t root_len = sizeof(root_server_addr);
 		recvfrom(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&root_server_addr, &root_len);
-		print_reply(recvbuf);
+		namelength = print_reply(recvbuf);
 			
 		//Create Reply DNS header and copy data from buffer
 		dnshdr replyheader;
@@ -201,32 +213,36 @@ int main(int argc, char** argv){
 			printf("Did not recieve any answers\n");
 		}
 		
-		int pos = 12 + namelength + 4;
 		
-		if(authcount == 0){
-			printf("Auth Count = 0\n");
-		}
-		for(int i=0; i<authcount; i++){
-			//printf("\n\n\nauthoratative nameserver: %d \n\n", i);
-			//print_buf(recvbuf, pos, AUTH_LENGTH);
-			pos += AUTH_LENGTH;
-		}
-		vector<string> root_hints;
-		for(int i=0; i<addcount; i++){
-			printf("\n\n\nAdditional Resource: %d\n\n", i);
-			get_ip(recvbuf, pos, AUTH_LENGTH, root_hints);
-			pos += AUTH_LENGTH;
-		}
-
 		answers = ancount;
 		if(answers == 0){
 			//find better server to ask
+			int pos = 12 + namelength + 4;
+		
+			if(authcount == 0){
+				printf("Auth Count = 0\n");
+			}
+			for(int i=0; i<authcount; i++){
+				//printf("\n\n\nauthoratative nameserver: %d \n\n", i);
+				//print_buf(recvbuf, pos, AUTH_LENGTH);
+				pos += get_data_length(namelength, pos, recvbuf);
+			}
+			vector<string> root_hints;
+			for(int i=0; i<addcount; i++){
+				printf("\n\n\nAdditional Resource: %d\n\n", i);
+				get_ip(recvbuf, pos, ADD_LENGTH, root_hints);
+				pos += ADD_LENGTH;
+			}
+
+			for(int i=0; i<root_hints.size(); i++){
+				cout << root_hints[i] << endl;
+			}
 
 			//update server address
-			root_server_addr.sin_addr.s_addr  = inet_addr("");
+			root_server_addr.sin_addr.s_addr  = inet_addr(root_hints[0].c_str());
+			memset(recvbuf, 0, BUF_SIZE);
 		}
 
-		break;
 	}
 
 	return 0;
