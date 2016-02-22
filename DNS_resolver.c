@@ -78,6 +78,13 @@ int print_reply(char* buf){
 	
 }
 
+void print_buf(char* buf, int pos, int len){
+	int i=0;
+	for(i=0; i<len; i++){
+		printf("\n%x", buf[pos+i]);
+	}
+}
+
 int main(int argc, char** argv){
 	int port = 9875;
 
@@ -96,7 +103,7 @@ int main(int argc, char** argv){
 
 	root_server_addr.sin_family = AF_INET;
 	root_server_addr.sin_port = htons(53);
-	root_server_addr.sin_addr.s_addr  = inet_addr("8.8.8.8");
+	root_server_addr.sin_addr.s_addr  = inet_addr("198.41.0.4");
 
 	bind(sockfd, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
 
@@ -115,46 +122,100 @@ int main(int argc, char** argv){
 		printf("error\n");
 	}
 	printf("rcode status: %d\n", recvhdr.rcode);
+
 	int namelength = print_reply(buf);
-
-	//Unset recursion bit
-	recvhdr.rd = 0;
-	memcpy(&recvhdr, buf, 12);
-	//Forward to root server
-
-	bind(sockfd, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
-	//Point to the query portion of the message
-	//char *qname 
-	//Encode name to DNS format
-	//Specify type 
-	//Specify class
-	sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
-	//memset(buf,0,BUF_SIZE);
-	char recvbuf [BUF_SIZE];
-	socklen_t root_len = sizeof(root_server_addr);
-	recvfrom(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&root_server_addr, &root_len);
-	print_reply(recvbuf);
-		
-	//Create Reply DNS header and copy data from buffer
-	dnshdr replyheader;
-	
-	memcpy(&replyheader, recvbuf, 12);
-
-	//Error check reply header
-	if(replyheader.rcode != 0){
-		printf("Error: rcode vale %d\n", replyheader.rcode);
+	//Check type and class
+	if(buf[12+namelength+1] != TYPE_A){
+		printf("Error: Wrong type\n");
+		sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
+		return 0;
+	}
+	if(buf[12+namelength+3] != CLASS_IN){
+		printf("Error: Wrong class\n");
+		sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
 		return 0;
 	}
 
-	uint16_t ancount = ntohs(replyheader.ancount);		//convert the unsigned short integer netshort from network byte
-	if(ancount == 0){
-		printf("Did not recieve any answers\n");
+	//Unset recursion bit
+	recvhdr.rd = 0;
+	memcpy(buf, &recvhdr, 12);
+	//Forward to root server
+
+	uint16_t answers = 0;
+
+	while(answers == 0){
+
+		bind(sockfd, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
+		sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
+		//memset(buf,0,BUF_SIZE);
+		char recvbuf [BUF_SIZE];
+		socklen_t root_len = sizeof(root_server_addr);
+		recvfrom(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&root_server_addr, &root_len);
+		print_reply(recvbuf);
+			
+		//Create Reply DNS header and copy data from buffer
+		dnshdr replyheader;
+		
+		memcpy(&replyheader, recvbuf, 12);
+
+		//Error check reply header
+		if(replyheader.rcode != 0){
+			printf("Error: rcode vale %d\n", replyheader.rcode);
+			return 0;
+		}
+
+		uint16_t ancount = ntohs(replyheader.ancount);		//convert the unsigned short integer netshort from network byte
+		uint16_t authcount = ntohs(replyheader.authcount);
+		if(ancount == 0){
+			printf("Did not recieve any answers\n");
+		}
+		int curpos = 12;
+		curpos = printquery(curpos, recvbuf);
+		for(int i=0; i<ancount; i++){
+			printf("Answer %d\n", i);
+			//curpos = printreply(curpos, recvbuf);
+		}
+		int pos = 0;
+		int length = 0;
+		int j=0;
+		
+		if(authcount == 0){
+			printf("Auth Count = 0\n");
+		}
+		for(int i=0; i<authcount; i++){
+			length = 0;
+			while(recvbuf[j] != 0xFFFFFFC0){
+				pos++;
+				j++;
+				printf("%x\n", recvbuf[j]);
+				if(pos >= BUF_SIZE){
+					break;
+				}
+			}
+			j++;
+			while(recvbuf[j] != 0xFFFFFFC0){
+				length++;
+				printf("%x\n", recvbuf[j]);
+				if(pos+length >= BUF_SIZE){
+					break;
+				}
+				j++;
+			}
+			printf("\n\n\nauthoratative nameserver: %d \n\n", i);
+			print_buf(recvbuf, pos, length);
+			pos += length;
+		}
+		answers = ancount;
+		if(answers == 0){
+			//find better server to ask
+
+			//update server address
+			root_server_addr.sin_addr.s_addr  = inet_addr("");
+		}
+
+		break;
 	}
-	int curpos = 12;
-	curpos = printquery(curpos, recvbuf);
-	for(int i=0; i<ancount; i++){
-		printf("Answer %d\n", i);
-		//curpos = printreply(curpos, recvbuf);
-	}
+
+	return 0;
 }
 
