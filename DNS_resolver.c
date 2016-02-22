@@ -129,6 +129,24 @@ int get_data_length(int namelength, int pos, char* buf){
 	return ret + 2 + 2 + 2 + 4 + namelength;
 }
 
+string get_answer(char* buf, int namelength){
+	string s;
+	int i;
+	char tmp[5];
+	int pos = 12+namelength+4;
+	int index = pos + get_data_length(namelength, pos, buf) - 2 -2;
+	for(i=index; i<index+4; i++){
+		sprintf(tmp, "%u", (unsigned char)buf[i]);
+		s += tmp;
+		if(i != index+3){
+			s += '.';
+		}
+	}
+	return s;
+}
+
+
+
 int main(int argc, char** argv){
 	int port = 9875;
 
@@ -186,11 +204,12 @@ int main(int argc, char** argv){
 	//Forward to root server
 
 	uint16_t answers = 0;
+	char recvbuf [BUF_SIZE];
 
 	while(answers == 0){
 
 		sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
-		char recvbuf [BUF_SIZE];
+		
 		socklen_t root_len = sizeof(root_server_addr);
 		recvfrom(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&root_server_addr, &root_len);
 		namelength = print_reply(recvbuf);
@@ -244,6 +263,8 @@ int main(int argc, char** argv){
 		}
 
 	}
+	printf("\n\n");
+	cout << "Answer: " << get_answer(recvbuf, namelength) << endl;
 
 	return 0;
 }
