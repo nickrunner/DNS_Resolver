@@ -12,7 +12,7 @@
 #define TYPE_A 1
 #define CLASS_IN 1
 #define ADD_LENGTH 16
-
+#define ipv4Len 4
 using namespace std;
 
 //DNS header
@@ -114,35 +114,55 @@ void get_ip(char* buf, int pos, int len, vector<string>& root_hints){
 		}
 	}
 	root_hints.push_back(s);
-	cout << "test: " << s << endl;
+	//cout << "test: " << s << endl;
 }
 
-//pos should be the begining of the authoritative name server
+//pos should be the begining of the a resource record
 int get_data_length(int namelength, int pos, char* buf){
 	uint16_t ret=0;
-	namelength /= 8;
+	//namelength /= 8;
+	//where the resource data length is in the buffer
 	int rdLenIndex = pos + namelength + 9;
 	//memcpy(&ret, &buf[rdLenIndex], );
 	ret = buf[rdLenIndex];
 	printf("namelength: %d\n",namelength);
 	printf("data length: %d\n\n", ret);
-	return ret + 2 + 2 + 2 + 4 + namelength;
+	return ret; //+ 2 + 2 + 2 + 4 + namelength;
 }
-
-string get_answer(char* buf, int namelength){
+/*
+ * returns an ipv4 answer if there is one, 0 else
+*/
+string get_answer(char* buf, int original_namelength, int namelength, int numAnswers){
 	string s;
 	int i;
 	char tmp[5];
-	int pos = 12+namelength+4;
-	int index = pos + get_data_length(namelength, pos, buf) - 2 -2;
-	for(i=index; i<index+4; i++){
-		sprintf(tmp, "%u", (unsigned char)buf[i]);
-		s += tmp;
-		if(i != index+3){
-			s += '.';
-		}
+	int pos = 12+original_namelength+4; //start of answer section
+	int dataLen = get_data_length(namelength, pos, buf);
+	printf("Data length: %d\n\n", dataLen);
+	printf("Original Name Length: %d\n\n", original_namelength);
+
+	while(dataLen != ipv4Len && i < numAnswers){ //loop until find ipv4 answer
+		pos = pos + namelength+10 + dataLen;
+		dataLen = get_data_length(namelength, pos, buf);
+		i++;
 	}
-	return s;
+	//found ipv4 answer, or there was no ipv4 answer
+	if(dataLen == ipv4Len){ //there was an ipv4 answer, grab and return it	
+		int startRdata = pos + namelength + 10;
+		for(i=startRdata; i<startRdata+4; i++){
+			sprintf(tmp, "%u", (unsigned char)buf[i]);
+			s += tmp;
+			if(i != startRdata+3){
+				s += '.';
+			}
+		}
+		
+		return s;
+	}
+	else{
+		cout << "no IPV4 answers were found" << endl;
+
+	}
 }
 
 
@@ -185,16 +205,16 @@ int main(int argc, char** argv){
 	}
 	printf("rcode status: %d\n", recvhdr.rcode);
 
-	int namelength = print_reply(buf);
+	int original_namelength = print_reply(buf);
 	//Check type and class
-	if(buf[12+namelength+1] != TYPE_A){
+	if(buf[12+original_namelength+1] != TYPE_A){
 		printf("Error: Wrong type\n");
-		sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
+		sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
 		return 0;
 	}
-	if(buf[12+namelength+3] != CLASS_IN){
+	if(buf[12+original_namelength+3] != CLASS_IN){
 		printf("Error: Wrong class\n");
-		sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
+		sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
 		return 0;
 	}
 
@@ -205,15 +225,15 @@ int main(int argc, char** argv){
 
 	uint16_t answers = 0;
 	char recvbuf [BUF_SIZE];
-
+	int namelength;
 	while(answers == 0){
 
-		sendto(sockfd, buf, 16+namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
+		sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
 		
 		socklen_t root_len = sizeof(root_server_addr);
 		recvfrom(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&root_server_addr, &root_len);
-		namelength = print_reply(recvbuf);
-			
+		original_namelength = print_reply(recvbuf);
+		namelength = 2;	
 		//Create Reply DNS header and copy data from buffer
 		dnshdr replyheader;
 		
@@ -225,26 +245,24 @@ int main(int argc, char** argv){
 			return 0;
 		}
 
-		uint16_t ancount = ntohs(replyheader.ancount);		//convert the unsigned short integer netshort from network byte
+		answers = ntohs(replyheader.ancount);		//convert the unsigned short integer netshort from network byte
 		uint16_t authcount = ntohs(replyheader.authcount);
 		uint16_t addcount = ntohs(replyheader.addcount);
-		if(ancount == 0){
+		if(answers == 0){
 			printf("Did not recieve any answers\n");
 		}
-		
-		
-		answers = ancount;
+	
 		if(answers == 0){
 			//find better server to ask
-			int pos = 12 + namelength + 4;
-		
+			int pos = 12 + original_namelength + 4;
+			//namelength /= 8;
 			if(authcount == 0){
 				printf("Auth Count = 0\n");
 			}
 			for(int i=0; i<authcount; i++){
 				//printf("\n\n\nauthoratative nameserver: %d \n\n", i);
 				//print_buf(recvbuf, pos, AUTH_LENGTH);
-				pos += get_data_length(namelength, pos, recvbuf);
+				pos += (get_data_length(namelength, pos, recvbuf) + 10 + namelength);
 			}
 			vector<string> root_hints;
 			for(int i=0; i<addcount; i++){
@@ -258,13 +276,14 @@ int main(int argc, char** argv){
 			}
 
 			//update server address
-			root_server_addr.sin_addr.s_addr  = inet_addr(root_hints[0].c_str());
+			root_server_addr.sin_addr.s_addr  = inet_addr(root_hints[1].c_str());
 			memset(recvbuf, 0, BUF_SIZE);
 		}
 
 	}
 	printf("\n\n");
-	cout << "Answer: " << get_answer(recvbuf, namelength) << endl;
+
+	cout << "Answer: " << get_answer(recvbuf, original_namelength, namelength, answers) << endl;
 
 	return 0;
 }
