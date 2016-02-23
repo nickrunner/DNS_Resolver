@@ -99,23 +99,6 @@ int print_reply(char* buf){
 	
 }
 
-void get_ip(char* buf, int pos, int len, vector<string>& root_hints){
-	int i=0;
-	char tmp[5];
-	string s;
-	for(i=12; i<len; i++){
-
-		sprintf(tmp, "%u", (unsigned char)buf[pos+i]);
-		//printf("%s", tmp );
-		s += tmp;
-		//s += itoa(buf[pos+i]);
-		if(i != len-1){
-			s += '.';
-		}
-	}
-	root_hints.push_back(s);
-	//cout << "test: " << s << endl;
-}
 
 //pos should be the begining of the a resource record
 int get_data_length(int namelength, int pos, char* buf){
@@ -129,6 +112,48 @@ int get_data_length(int namelength, int pos, char* buf){
 	printf("data length: %d\n\n", ret);
 	return ret; //+ 2 + 2 + 2 + 4 + namelength;
 }
+
+/*
+ * pos should be the start of a resource record 
+ * l
+  * root_hints is a vector of 19 addresses
+    returns the position of the next section
+ */
+int get_ip(char* buf, int pos, int namelength, int original_namelength,
+							vector<string>& root_hints,int numRecords){
+	int j=0;
+	char tmp[5];
+	string s;
+	int dataLen = get_data_length(namelength, pos, buf);
+	printf("Data lengthip: %d\n\n", dataLen);
+	printf("Original Name Lengthip: %d\n\n", original_namelength);
+    printf("numRecords is %d\n", numRecords);
+	//pos should be the start of a resource record
+	while(j < numRecords){ 
+		s.clear();
+		pos = pos + namelength+10 + dataLen;
+		dataLen = get_data_length(namelength, pos, buf);
+		//found ipv4 answer, or there was no ipv4 answer
+		if(dataLen == ipv4Len){ //there was an ipv4 answer, grab and push
+		    printf("found ipv4 in additional rescources\n");	
+			int startRdata = pos + namelength + 10;
+			for(int i=startRdata; i<startRdata+4; i++){
+				sprintf(tmp, "%u", (unsigned char)buf[i]);
+				s += tmp;
+				if(i != startRdata+3){
+					s += '.';
+				}
+			}
+			//cout << " it is " << s << endl;
+			root_hints.push_back(s); //push ip address to vector
+		}
+		j = j + 1;
+    }
+    return pos;
+	
+}
+
+
 /*
  * returns an ipv4 answer if there is one, 0 else
 */
@@ -141,6 +166,7 @@ string get_answer(char* buf, int original_namelength, int namelength, int numAns
 	printf("Data length: %d\n\n", dataLen);
 	printf("Original Name Length: %d\n\n", original_namelength);
 
+	//pos should be the start of a resource record
 	while(dataLen != ipv4Len && i < numAnswers){ //loop until find ipv4 answer
 		pos = pos + namelength+10 + dataLen;
 		dataLen = get_data_length(namelength, pos, buf);
@@ -265,26 +291,25 @@ int main(int argc, char** argv){
 				pos += (get_data_length(namelength, pos, recvbuf) + 10 + namelength);
 			}
 			vector<string> root_hints;
-			for(int i=0; i<addcount; i++){
-				printf("\n\n\nAdditional Resource: %d\n\n", i);
-				get_ip(recvbuf, pos, ADD_LENGTH, root_hints);
-				pos += ADD_LENGTH;
-			}
-
+			printf("\n\n\nAdditional Resource:\n\n");
+			pos = get_ip(recvbuf, pos, namelength, original_namelength, root_hints, addcount);
+            //print ip addresses found  
 			for(int i=0; i<root_hints.size(); i++){
 				cout << root_hints[i] << endl;
 			}
 
 			//update server address
-			root_server_addr.sin_addr.s_addr  = inet_addr(root_hints[1].c_str());
+			root_server_addr.sin_addr.s_addr  = inet_addr(root_hints[0].c_str());
 			memset(recvbuf, 0, BUF_SIZE);
 		}
 
 	}
 	printf("\n\n");
+	string an = get_answer(recvbuf, original_namelength, namelength, answers);
+	cout << "Answer: " << an << endl;
 
-	cout << "Answer: " << get_answer(recvbuf, original_namelength, namelength, answers) << endl;
-
+	sendto(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
+	
 	return 0;
 }
 
