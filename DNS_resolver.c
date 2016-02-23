@@ -194,7 +194,15 @@ string get_answer(char* buf, int original_namelength, int namelength, int numAns
 
 
 int main(int argc, char** argv){
-	int port = 9875;
+	
+	int port;
+	printf("Please enter a port: ");
+	scanf(" %d", &port);
+	if ( port < 0 ){
+		printf("Invalid port number\n");
+	}
+
+	printf("Listening on port %d", port);
 
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 		if(sockfd<0){
@@ -219,97 +227,104 @@ int main(int argc, char** argv){
 
 	char buf[BUF_SIZE];
 	//Receive data from dig
+    
+	while(1){
+		//reset variables
+		root_server_addr.sin_addr.s_addr = inet_addr("198.41.0.4");
+		memset(buf, 0, BUF_SIZE);
 
-	recvfrom(sockfd, buf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, &dig_len);
-	int i=0;
-	
-	
-	dnshdr recvhdr;
-	memcpy(&recvhdr, buf, 12);
-	if(recvhdr.rcode!=0){
-		printf("error\n");
-	}
-	printf("rcode status: %d\n", recvhdr.rcode);
-
-	int original_namelength = print_reply(buf);
-	//Check type and class
-	if(buf[12+original_namelength+1] != TYPE_A){
-		printf("Error: Wrong type\n");
-		sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
-		return 0;
-	}
-	if(buf[12+original_namelength+3] != CLASS_IN){
-		printf("Error: Wrong class\n");
-		sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
-		return 0;
-	}
-
-	//Unset recursion bit
-	recvhdr.rd = 0;
-	memcpy(buf, &recvhdr, 12);
-	//Forward to root server
-
-	uint16_t answers = 0;
-	char recvbuf [BUF_SIZE];
-	int namelength;
-	while(answers == 0){
-
-		sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
+		//wait for next query
+		printf("Waiting for query...\n");
+		recvfrom(sockfd, buf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, &dig_len);
+		int i=0;
 		
-		socklen_t root_len = sizeof(root_server_addr);
-		recvfrom(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&root_server_addr, &root_len);
-		original_namelength = print_reply(recvbuf);
-		namelength = 2;	
-		//Create Reply DNS header and copy data from buffer
-		dnshdr replyheader;
 		
-		memcpy(&replyheader, recvbuf, 12);
+		dnshdr recvhdr;
+		memcpy(&recvhdr, buf, 12);
+		if(recvhdr.rcode!=0){
+			printf("error\n");
+		}
+		printf("rcode status: %d\n", recvhdr.rcode);
 
-		//Error check reply header
-		if(replyheader.rcode != 0){
-			printf("Error: rcode vale %d\n", replyheader.rcode);
+		int original_namelength = print_reply(buf);
+		//Check type and class
+		if(buf[12+original_namelength+1] != TYPE_A){
+			printf("Error: Wrong type\n");
+			sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
+			return 0;
+		}
+		if(buf[12+original_namelength+3] != CLASS_IN){
+			printf("Error: Wrong class\n");
+			sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
 			return 0;
 		}
 
-		answers = ntohs(replyheader.ancount);		//convert the unsigned short integer netshort from network byte
-		uint16_t authcount = ntohs(replyheader.authcount);
-		uint16_t addcount = ntohs(replyheader.addcount);
-		if(answers == 0){
-			printf("Did not recieve any answers\n");
+		//Unset recursion bit
+		recvhdr.rd = 0;
+		memcpy(buf, &recvhdr, 12);
+		//Forward to root server
+
+		uint16_t answers = 0;
+		char recvbuf [BUF_SIZE];
+		int namelength;
+		while(answers == 0){
+
+			sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&root_server_addr, sizeof(root_server_addr));
+			
+			socklen_t root_len = sizeof(root_server_addr);
+			recvfrom(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&root_server_addr, &root_len);
+			original_namelength = print_reply(recvbuf);
+			namelength = 2;	
+			//Create Reply DNS header and copy data from buffer
+			dnshdr replyheader;
+			
+			memcpy(&replyheader, recvbuf, 12);
+
+			//Error check reply header
+			if(replyheader.rcode != 0){
+				printf("Error: rcode vale %d\n", replyheader.rcode);
+				return 0;
+			}
+
+			answers = ntohs(replyheader.ancount);		//convert the unsigned short integer netshort from network byte
+			uint16_t authcount = ntohs(replyheader.authcount);
+			uint16_t addcount = ntohs(replyheader.addcount);
+			if(answers == 0){
+				printf("Did not recieve any answers\n");
+			}
+		
+			if(answers == 0){
+				//find better server to ask
+				int pos = 12 + original_namelength + 4;
+				//namelength /= 8;
+				if(authcount == 0){
+					printf("Auth Count = 0\n");
+				}
+				for(int i=0; i<authcount; i++){
+					//printf("\n\n\nauthoratative nameserver: %d \n\n", i);
+					//print_buf(recvbuf, pos, AUTH_LENGTH);
+					pos += (get_data_length(namelength, pos, recvbuf) + 10 + namelength);
+				}
+				vector<string> root_hints;
+				printf("\n\n\nAdditional Resource:\n\n");
+				pos = get_ip(recvbuf, pos, namelength, original_namelength, root_hints, addcount);
+	            //print ip addresses found  
+				for(int i=0; i<root_hints.size(); i++){
+					cout << root_hints[i] << endl;
+				}
+
+				//update server address
+				root_server_addr.sin_addr.s_addr  = inet_addr(root_hints[0].c_str());
+				memset(recvbuf, 0, BUF_SIZE);
+			}
+
 		}
-	
-		if(answers == 0){
-			//find better server to ask
-			int pos = 12 + original_namelength + 4;
-			//namelength /= 8;
-			if(authcount == 0){
-				printf("Auth Count = 0\n");
-			}
-			for(int i=0; i<authcount; i++){
-				//printf("\n\n\nauthoratative nameserver: %d \n\n", i);
-				//print_buf(recvbuf, pos, AUTH_LENGTH);
-				pos += (get_data_length(namelength, pos, recvbuf) + 10 + namelength);
-			}
-			vector<string> root_hints;
-			printf("\n\n\nAdditional Resource:\n\n");
-			pos = get_ip(recvbuf, pos, namelength, original_namelength, root_hints, addcount);
-            //print ip addresses found  
-			for(int i=0; i<root_hints.size(); i++){
-				cout << root_hints[i] << endl;
-			}
+		printf("\n\n");
+		string an = get_answer(recvbuf, original_namelength, namelength, answers);
+		cout << "Answer: " << an << endl;
 
-			//update server address
-			root_server_addr.sin_addr.s_addr  = inet_addr(root_hints[0].c_str());
-			memset(recvbuf, 0, BUF_SIZE);
-		}
-
-	}
-	printf("\n\n");
-	string an = get_answer(recvbuf, original_namelength, namelength, answers);
-	cout << "Answer: " << an << endl;
-
-	sendto(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
-	
+		sendto(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
+	}	
 	return 0;
 }
 
