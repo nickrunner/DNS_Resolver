@@ -202,7 +202,7 @@ int main(int argc, char** argv){
 		printf("Invalid port number\n");
 	}
 
-	printf("Listening on port %d", port);
+	printf("Listening on port %d\n", port);
 
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 		if(sockfd<0){
