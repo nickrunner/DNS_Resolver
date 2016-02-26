@@ -248,16 +248,17 @@ int main(int argc, char** argv){
 
 		int original_namelength = print_reply(buf);
 		//Check type and class
-		if(buf[12+original_namelength+1] != TYPE_A){
-			printf("Error: Wrong type\n");
+		if(buf[12+original_namelength+1] != TYPE_A || 
+			buf[12+original_namelength+3] != CLASS_IN){
+			
+			printf("Error: Wrong type or class\n");
+			recvhdr.qr = 1;
+			recvhdr.rcode = 5;
+		        memcpy(buf, &recvhdr, 12);
+			
 			sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
-			return 0;
 		}
-		if(buf[12+original_namelength+3] != CLASS_IN){
-			printf("Error: Wrong class\n");
-			sendto(sockfd, buf, 16+original_namelength, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
-			return 0;
-		}
+                else{
 
 		//Unset recursion bit
 		recvhdr.rd = 0;
@@ -324,6 +325,7 @@ int main(int argc, char** argv){
 		cout << "Answer: " << an << endl;
 
 		sendto(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
+	}
 	}	
 	return 0;
 }
