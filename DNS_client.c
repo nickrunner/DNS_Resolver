@@ -98,7 +98,7 @@ int main(int argc, char** argv){
 
 	//Hard Code address of DNS resolver
 	int port = htons(53);
-	int addr = inet_addr("8.8.8.8");
+	int addr = inet_addr("127.0.0.1");
 	struct sockaddr_in dnsserver;
 	dnsserver.sin_port = port;
 	dnsserver.sin_addr.s_addr = addr;
@@ -120,7 +120,7 @@ int main(int argc, char** argv){
 	char *encodedname = (char*)malloc(namelength);
 	encodename(qname, encodedname);
 	memcpy(&buf[12], encodedname, namelength);	//Copy query name into buffer
-	buf[12+namelength+1] = TYPE_A;
+	buf[12+namelength+1] = 3 /*TYPE_A*/;
 	buf[12+namelength+3] = CLASS_IN;
 
 	//Send DNS packet Header to DNS server
