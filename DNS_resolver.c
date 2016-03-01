@@ -4,10 +4,12 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <string.h>
+#include <string>
 #include <iostream>
 #include <vector>
 #include <map>
+#include <cstdlib> 
+
 
 #define BUF_SIZE 512
 #define TYPE_A 1
@@ -23,6 +25,7 @@
 #define NAME_LENGTH 2
 
 using namespace std;
+
 
 //DNS header
 typedef struct dnshdr{
@@ -52,7 +55,7 @@ typedef struct res_record{
 	string ip;
 }res_record;
 
-void encodename(char* src, char* dst){
+void encodename(const char* src, char* dst){
   int i=0;
   int pos=0;
   while(src[i]!='\0'){
@@ -68,6 +71,91 @@ void encodename(char* src, char* dst){
   dst[pos]=i-pos;
   dst[i+1]=0;
 }
+
+void create_packet(char* buf, char* outBuffer, res_record& rr){
+
+	/*******************************************
+	create headder section
+	*******************************************/
+	//start with original query header put into a struct
+
+	//buffer to hold the cached answer
+	char cchAnsBuf[512] = {};
+	dnshdr cchAnsHeader;
+
+	//copy ORIGINAL buffer into header
+	memcpy(&cchAnsHeader, buf, 12); 
+
+	//set Question count = 0
+	cchAnsHeader.qcount = 0;
+
+	//set ANCount = 1
+	cchAnsHeader.ancount = 0;
+
+	//set NSCount = 0
+	cchAnsHeader.addcount = 0;
+
+	//set ARCount = 0
+	cchAnsHeader.authcount = 0;
+
+	//set QR=1 (query response)
+	cchAnsHeader.qcount = 0;
+	
+	//copies the updated header into the AnswerBuf to be sent to dig
+	memcpy(cchAnsBuf, &cchAnsHeader, 12); 
+ 
+	
+	/********************************************
+	create answer section
+	*******************************************/
+	int namelength = strlen(rr.name.c_str());
+	char* encodedName = (char*)malloc(namelength);
+	encodename(rr.name.c_str(), encodedName);
+	//copy the name into the start of the answer section
+	memcpy(&cchAnsBuf[12], encodedName, namelength);
+	
+	//copy the type into the answer section
+	memcpy(&cchAnsBuf[12+namelength+1], &rr._type, TYPE_LENGTH);
+
+	//copy the class into the buffer
+	memcpy(&cchAnsBuf[12+namelength+TYPE_LENGTH], &rr._class, CLASS_LENGTH);
+
+	//copy the TTL into the buffer
+	int ttl_tmp = htonl(rr.ttl);
+	memcpy(&cchAnsBuf[12+namelength+TYPE_LENGTH+CLASS_LENGTH], &ttl_tmp, TTL_LENGTH);
+
+	//copy the RDLength into the buffer
+	//4 is len of ipv4 address
+	int ip_length = ipv4Len;
+	memcpy(&cchAnsBuf[12+namelength+TYPE_LENGTH+CLASS_LENGTH+TTL_LENGTH], &ip_length, DATA_LENGTH_SIZE);
+
+	//copy the RData (ip address) into the buffer
+	std::string tmpStr;
+	char rdata[4];
+	int m=0; //loop var for each byte of the ip
+	uint8_t tmpByte;
+	for(int k=0; k<rr.name.length();k++){
+		if(rr.name[k] != '.'){
+			tmpStr+=rr.name[k];
+		}
+		else{
+			tmpByte = std::strtol(tmpStr.c_str(), NULL, 16);
+			rdata[m]=tmpByte;
+			tmpStr = "";
+		}
+	}
+	//2 is lentth of RDLENGTH ipv4 length
+	for(int x=0; x<4; x++){
+		cout << rdata[x] << endl;
+	}
+	
+	memcpy(&cchAnsBuf[12+namelength+TYPE_LENGTH+CLASS_LENGTH+TTL_LENGTH+2], rdata, DATA_LENGTH_SIZE);
+
+	outBuffer = cchAnsBuf;
+}
+
+
+
 
 int decodename(char* buf, int pos, char* dst){
   int start=pos;
@@ -256,9 +344,6 @@ void print_cache(vector<struct res_record>& cache){
 		cout << "TTL: " << cache[i].ttl << endl;
 		cout << "IP Address: " << cache[i].ip << endl << endl;
 	}
-	for(int j=0; j<cache[0].ip.size(); j++){
-		cout << cache[0].ip[j] << endl;
-	}
 }
 
 bool check_cache(string name, vector<struct res_record>& cache, res_record& cache_record){
@@ -413,7 +498,7 @@ int main(int argc, char** argv){
 						pos += (get_data_length(NAME_LENGTH, pos, recvbuf) + 10 + NAME_LENGTH);
 					}
 					vector<string> root_hints;
-					printf("\n\n\nAdditional Resource:\n\n");
+					printf("\n\n\nAdditional Record:\n\n");
 					pos = get_ip(recvbuf, pos, NAME_LENGTH, original_namelength, root_hints, addcount);
 		            //print ip addresses found  
 					for(int i=0; i<root_hints.size(); i++){
@@ -434,6 +519,10 @@ int main(int argc, char** argv){
 				cout << "Class: " << cache_record._class << endl;
 				cout << "TTL: " << cache_record.ttl << endl;
 				cout << "IP Address: " << cache_record.ip << endl << endl;
+				create_packet(buf, recvbuf, cache_record);
+				for(int k=0; k<BUF_SIZE; k++){
+					printf("\n%x", recvbuf[k]);
+				}
 			}
 			else{
 				printf("\n\n");
@@ -442,8 +531,9 @@ int main(int argc, char** argv){
 
 				print_cache(cache);
 	            
-				sendto(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
 			}
+			sendto(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
+
 		}
 	}	
 	return 0;

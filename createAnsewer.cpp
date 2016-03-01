@@ -1,0 +1,74 @@
+create_packet(char* origBuf, char* outBuffer, res_record rr){
+
+	/*******************************************
+	create headder section
+	*******************************************/
+	//start with original query header put into a struct
+
+	//buffer to hold the cached answer
+	char cchAnsBuf[512] = {};
+	dnshdr cchAnsHeader;
+
+	//copy ORIGINAL buffer into header
+	memcpy(buf, &cchAnsHeader, 12); 
+
+	//set Question count = 0
+	cchAnsHeader.qcount = 0;
+
+	//set ANCount = 1
+	cchAnsHeader.ancount = 0;
+
+	//set NSCount = 0
+	cchAnsHeader.addcount = 0;
+
+	//set ARCount = 0
+	cchAnsHeader.authcount = 0;
+
+	//set QR=1 (query response)
+	cchAnsHeader.qcount = 0;
+	
+	//copies the updated header into the AnswerBuf to be sent to dig
+	memcpy(&cchAnsHeader,cchAnsBuf[0], 12); 
+ 
+	
+	/********************************************
+	create answer section
+	*******************************************/
+	int namelength = strlen(rr.name.c_str())
+	char* encodedName = char*)malloc(namelenght);
+	encodename(rr.name.c_str(), encodedName);
+	//copy the name into the start of the answer section
+	memcpy(&cchAnsBuf[12], encodedName, namelength);
+	
+	//copy the type into the answer section
+	memcpy(&cchAnsBuf[12+namelenght], rr._type, TYPE_LENGTH);
+
+	//copy the class into the buffer
+	memcpy(&cchAnsBuf[12+namelenght+TYPE_LENGTH], rr._class, CLASS_LENGTH);
+
+	//copy the TTL into the buffer
+	memcpy(&cchAnsBuf[12+namelenght+TYPE_LENGTH+CLASS_LENGTH], rr._ttl, TTL_LENGTH);
+
+	//copy the RDLength into the buffer
+	//4 is len of ipv4 address
+	memcpy(&cchAnsBuf[12+namelenght+TYPE_LENGTH+CLASS_LENGTH+TTL_LENGTH], 4, RR_LENGTH_SIZE);
+
+	//copy the RData (ip address) into the buffer
+	std::string tmpStr;
+	char rdata[4];
+	int m=0; //loop var for each byte of the ip
+	uint8_t tmpByte;
+	for(int k=0; k<rr.name.lenght;k++){
+		if(rr.name[k] != "."){
+			tmpStr+=rr.name[k];
+		}
+		else{
+			tmpByte[m] = (uint8_t)stoi(tmpStr);
+		}
+	}
+	//2 is lentth of RDLENGTH ipv4 length
+	memcpy(&cchAnsBuf[12+namelenght+TYPE_LENGTH+CLASS_LENGTH+TTL_LENGTH+2], rr._type, RR_LENGTH_SIZE);
+
+
+}
+
