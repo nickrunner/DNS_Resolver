@@ -1,0 +1,24 @@
+questions for data com project:
+
+Do we need to store the entire resource record, or just the name, ip and ttl
+
+We are not storing this as an array of bits.  We will use structures to store the RR's
+
+Do we need to store every resource record, for example every singe answer, or is one good enough
+	We need to store all of them
+
+is using a map<string fullname, struct resourceRecord> a good method?
+	Kinda
+
+when do we check the TTLs of the resource records? every time we check them?
+	Yes. Every time	
+
+where is the name of the intermediate servers, for example .com .co.uk...
+it is in the authorative nameservers, 
+	It is in authoratative nameservers... but it should be the same for all of them. So we can just grab the name from one of them and the store it
+
+
+can we send the 2 byte name in additional resources to "decode name" to get
+the subname? test this would need to pass the begining of the
+	?	
+
