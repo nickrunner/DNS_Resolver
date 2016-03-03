@@ -17,6 +17,7 @@
 #define ADD_LENGTH 16
 #define ipv4Len 4
 #define ANSWER 1
+#define NAME_SERVER 0
 #define NOT_ANSWER 0
 #define TYPE_LENGTH 2
 #define CLASS_LENGTH 2
@@ -73,87 +74,93 @@ void encodename(const char* src, char* dst){
 }
 
 void create_packet(char* buf, char* outBuffer, res_record& rr){
+    int END_HEADER = 12;
+    int namelength = strlen(rr.name.c_str());
+    int QLEN = TYPE_LENGTH + CLASS_LENGTH + namelength;
+    int pos = 0;
+    /*******************************************
+    create headder section
+    *******************************************/
+    //start with original query header put into a struct
+    //buffer to hold the cached answer
+    char cchAnsBuf[512] = {};
+    dnshdr cchAnsHeader;
 
-	/*******************************************
-	create headder section
-	*******************************************/
-	//start with original query header put into a struct
+    //copy ORIGINAL buffer into header
+    memcpy(&cchAnsHeader, buf, END_HEADER);
+    //set Question count = 0
+    cchAnsHeader.qcount = 0;
+    //set ANCount = 1
+    cchAnsHeader.ancount = 0;
+    //set NSCount = 0
+    cchAnsHeader.addcount = 0;
+    //set ARCount = 0
+    cchAnsHeader.authcount = 0;
+    //set QR=1 (query response)
+    cchAnsHeader.qcount = 0;
 
-	//buffer to hold the cached answer
-	char cchAnsBuf[512] = {};
-	dnshdr cchAnsHeader;
+    //copies the updated header into the AnswerBuf to be sent to dig
+    memcpy(cchAnsBuf, &cchAnsHeader, 12);
+    pos+=END_HEADER;
 
-	//copy ORIGINAL buffer into header
-	memcpy(&cchAnsHeader, buf, 12); 
+    /**copy the original querry into the new buffer**/
+    //position is usually not used for the buffer, but can be used here
+    memcpy(&cchAnsBuf[pos], &buf[pos], QLEN);
+    pos+=QLEN;
+    /********************************************
+    create answer section
+    *******************************************/
+    char* encodedName = (char*)malloc(namelength);
+    encodename(rr.name.c_str(), encodedName);
+    //copy the name into the start of the answer section
+    memcpy(&cchAnsBuf[pos], encodedName, namelength);
+    pos+=namelength;
+    //copy the type into the answer section,+1 because only using LSbyte
+    memcpy(&cchAnsBuf[pos+1], &rr._type, 1);
+    pos+=TYPE_LENGTH;
 
-	//set Question count = 0
-	cchAnsHeader.qcount = 0;
+    //copy the class into the buffer +1for same reason as ^^
+    memcpy(&cchAnsBuf[pos+1], &rr._class, 1);
+    pos+= CLASS_LENGTH;
 
-	//set ANCount = 1
-	cchAnsHeader.ancount = 0;
+    //copy the TTL into the buffer
 
-	//set NSCount = 0
-	cchAnsHeader.addcount = 0;
+			int ttl_tmp = htonl(rr.ttl);
+    memcpy(&cchAnsBuf[pos], &ttl_tmp, TTL_LENGTH);
+    pos+=TTL_LENGTH;
 
-	//set ARCount = 0
-	cchAnsHeader.authcount = 0;
+    //copy the RDLength into the buffer
+    //4 is len of ipv4 address
+    int ip_length = ipv4Len;
+    memcpy(&cchAnsBuf[pos], &ip_length, DATA_LENGTH_SIZE);
+    pos+=DATA_LENGTH_SIZE;
 
-	//set QR=1 (query response)
-	cchAnsHeader.qcount = 0;
-	
-	//copies the updated header into the AnswerBuf to be sent to dig
-	memcpy(cchAnsBuf, &cchAnsHeader, 12); 
- 
-	
-	/********************************************
-	create answer section
-	*******************************************/
-	int namelength = strlen(rr.name.c_str());
-	char* encodedName = (char*)malloc(namelength);
-	encodename(rr.name.c_str(), encodedName);
-	//copy the name into the start of the answer section
-	memcpy(&cchAnsBuf[12], encodedName, namelength);
-	
-	//copy the type into the answer section
-	memcpy(&cchAnsBuf[12+namelength+1], &rr._type, TYPE_LENGTH);
+    //copy the RData (ip address) into the buffer
+    std::string tmpStr;
+    char rdata[ipv4Len]; //IP address will be 4 bytes
+    int m=0; //loop var for each byte of the ip
+    uint8_t tmpByte;
+    for(int k=0; k<rr.name.length();k++){
+            if(rr.name[k] != '.'){
+                    tmpStr+=rr.name[k];
+            }
+            else{
+                    tmpByte = std::strtol(tmpStr.c_str(), NULL, 16);
+                    rdata[m]=tmpByte;
+                    tmpStr = "";
+                    m++;
+            }
+    }
+    //2 is lentth of RDLENGTH ipv4 length
+    cout << "this is the ip to be sent" << endl;
+    for(int x=0; x<4; x++){
+            cout << rdata[x] << endl;
+    }
 
-	//copy the class into the buffer
-	memcpy(&cchAnsBuf[12+namelength+TYPE_LENGTH], &rr._class, CLASS_LENGTH);
+    memcpy(&cchAnsBuf[pos], rdata, ipv4Len);
 
-	//copy the TTL into the buffer
-	int ttl_tmp = htonl(rr.ttl);
-	memcpy(&cchAnsBuf[12+namelength+TYPE_LENGTH+CLASS_LENGTH], &ttl_tmp, TTL_LENGTH);
-
-	//copy the RDLength into the buffer
-	//4 is len of ipv4 address
-	int ip_length = ipv4Len;
-	memcpy(&cchAnsBuf[12+namelength+TYPE_LENGTH+CLASS_LENGTH+TTL_LENGTH], &ip_length, DATA_LENGTH_SIZE);
-
-	//copy the RData (ip address) into the buffer
-	std::string tmpStr;
-	char rdata[4];
-	int m=0; //loop var for each byte of the ip
-	uint8_t tmpByte;
-	for(int k=0; k<rr.name.length();k++){
-		if(rr.name[k] != '.'){
-			tmpStr+=rr.name[k];
-		}
-		else{
-			tmpByte = std::strtol(tmpStr.c_str(), NULL, 16);
-			rdata[m]=tmpByte;
-			tmpStr = "";
-		}
-	}
-	//2 is lentth of RDLENGTH ipv4 length
-	for(int x=0; x<4; x++){
-		cout << rdata[x] << endl;
-	}
-	
-	memcpy(&cchAnsBuf[12+namelength+TYPE_LENGTH+CLASS_LENGTH+TTL_LENGTH+2], rdata, DATA_LENGTH_SIZE);
-
-	outBuffer = cchAnsBuf;
+    *outBuffer = *cchAnsBuf;
 }
-
 
 
 
@@ -222,10 +229,8 @@ int get_data_length(int namelength, int pos, char* buf){
 	//namelength /= 8;
 	//where the resource data length is in the buffer
 	int rdLenIndex = pos + namelength + 9;
-	//memcpy(&ret, &buf[rdLenIndex], );
 	ret = buf[rdLenIndex];
-	//printf("namelength: %d\n",namelength);
-	//printf("data length: %d\n\n", ret);
+
 	return ret; //+ 2 + 2 + 2 + 4 + namelength;
 }
 
@@ -235,51 +240,24 @@ int get_data_length(int namelength, int pos, char* buf){
   * root_hints is a vector of 19 addresses
     returns the position of the next section
  */
-int get_ip(char* buf, int pos, int namelength, int original_namelength,
-							vector<string>& root_hints,int numRecords){
-	int j=0;
-	char tmp[5];
-	string s;
-	int dataLen = get_data_length(namelength, pos, buf);
-	printf("Data lengthip: %d\n\n", dataLen);
-	printf("Original Name Lengthip: %d\n\n", original_namelength);
-    printf("numRecords is %d\n", numRecords);
-	//pos should be the start of a resource record
-	while(j < numRecords){ 
-		s.clear();
-		pos = pos + namelength+10 + dataLen;
-		dataLen = get_data_length(namelength, pos, buf);
-		//found ipv4 answer, or there was no ipv4 answer
-		if(dataLen == ipv4Len){ //there was an ipv4 answer, grab and push
-		    printf("found ipv4 in additional rescources\n");	
-			int startRdata = pos + namelength + 10;
-			for(int i=startRdata; i<startRdata+4; i++){
-				sprintf(tmp, "%u", (unsigned char)buf[i]);
-				s += tmp;
-				//Don't add '.' to end
-				if(i != startRdata+3){
-					s += '.';
-				}
-			}
-			//cout << " it is " << s << endl;
-			root_hints.push_back(s); //push ip address to vector
-		}
-		j = j + 1;
-    }
-    return pos;
-	
-}
+
 
 
 /*
  * returns an ipv4 answer if there is one, 0 else
 */
-void get_answer(char* buf, int original_namelength, int numAnswers, vector<struct res_record>& cache){
+int get_answer(char* buf, int original_namelength, int numAnswers, vector<struct res_record>& cache, vector<string>& root_hints, int p_pos, bool rr_type){
 	string s;
 	res_record tmp_record;
 	int i;
 	char tmp[5];
-	int pos = 12+original_namelength+4; //start of answer section
+	int pos;
+	if(p_pos == 0){
+		pos = 12+original_namelength+4; //start of answer section
+	}
+	else{
+		pos = p_pos;
+	}
 	int dataLen;
 	printf("Original Name Length: %d\n\n", original_namelength);
 	char temp[256];
@@ -287,7 +265,7 @@ void get_answer(char* buf, int original_namelength, int numAnswers, vector<struc
 	decodename(buf, 12, temp);
 	std::string tmp_str(temp);
 	tmp_record.name = tmp_str;
-	tmp_record.rr_type = ANSWER;
+	tmp_record.rr_type = rr_type;
 
 	//pos should be the start of a resource record
 	while(i < numAnswers){ //loop until find ipv4 answer
@@ -320,6 +298,7 @@ void get_answer(char* buf, int original_namelength, int numAnswers, vector<struc
 		//cout << "IP Address: " << tmp_record.ip << endl << endl;
 
 		if(dataLen == ipv4Len){
+			root_hints.push_back(tmp_record.ip);
 			cache.push_back(tmp_record);
 		}
 
@@ -331,7 +310,7 @@ void get_answer(char* buf, int original_namelength, int numAnswers, vector<struc
 
 		i++;
 	}
-
+	return pos;
 }
 
 void print_cache(vector<struct res_record>& cache){
@@ -346,6 +325,8 @@ void print_cache(vector<struct res_record>& cache){
 	}
 }
 
+//Returns true if IPv4 answer exists in cache
+//Sets cache_record to record with matching name
 bool check_cache(string name, vector<struct res_record>& cache, res_record& cache_record){
 	bool answer_found = false;
 	for(int i=0; i<cache.size(); i++){
@@ -499,7 +480,7 @@ int main(int argc, char** argv){
 					}
 					vector<string> root_hints;
 					printf("\n\n\nAdditional Record:\n\n");
-					pos = get_ip(recvbuf, pos, NAME_LENGTH, original_namelength, root_hints, addcount);
+					pos = get_answer(recvbuf, original_namelength, addcount, cache, root_hints, pos, NAME_SERVER);
 		            //print ip addresses found  
 					for(int i=0; i<root_hints.size(); i++){
 						cout << root_hints[i] << endl;
@@ -519,14 +500,17 @@ int main(int argc, char** argv){
 				cout << "Class: " << cache_record._class << endl;
 				cout << "TTL: " << cache_record.ttl << endl;
 				cout << "IP Address: " << cache_record.ip << endl << endl;
+
 				create_packet(buf, recvbuf, cache_record);
+				
 				for(int k=0; k<BUF_SIZE; k++){
 					printf("\n%x", recvbuf[k]);
 				}
 			}
 			else{
 				printf("\n\n");
-				get_answer(recvbuf, original_namelength, answers, cache);
+				vector<string> server_IP;
+				get_answer(recvbuf, original_namelength, answers, cache, server_IP, 0, ANSWER);
 				//cache the answers
 
 				print_cache(cache);
