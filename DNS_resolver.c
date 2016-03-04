@@ -54,6 +54,7 @@ typedef struct res_record{
 	uint16_t _class;
 	unsigned int ttl;
 	string ip;
+	char resp[BUF_SIZE];
 }res_record;
 
 void encodename(const char* src, char* dst){
@@ -154,7 +155,7 @@ void create_packet(char* buf, char* outBuffer, res_record& rr){
     //2 is lentth of RDLENGTH ipv4 length
     cout << "this is the ip to be sent" << endl;
     for(int x=0; x<4; x++){
-            cout << rdata[x] << endl;
+            printf("%x\n", rdata[x]);
     }
 
     memcpy(&cchAnsBuf[pos], rdata, ipv4Len);
@@ -297,16 +298,26 @@ int get_answer(char* buf, int original_namelength, int numAnswers, vector<struct
 		pos += dataLen;
 		//cout << "IP Address: " << tmp_record.ip << endl << endl;
 
+		memcpy(tmp_record.resp, buf, BUF_SIZE);
+
 		if(dataLen == ipv4Len){
 			root_hints.push_back(tmp_record.ip);
 			cache.push_back(tmp_record);
 		}
+
+
+		
+
+		//for(int k=0; k<BUF_SIZE; k++){
+			//printf("\n%x   %x", (unsigned int)buf[k], tmp_record.resp[k]);
+		//}
 
 		//Reset Struct
 		tmp_record.ip = "";
 		tmp_record._type = 0;
 		tmp_record._class = 0;
 		tmp_record.ttl = 0;
+		memset(tmp_record.resp, 0, BUF_SIZE);
 
 		i++;
 	}
@@ -390,7 +401,7 @@ int main(int argc, char** argv){
 		recvfrom(sockfd, buf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, &dig_len);
 		int i=0;
 		
-		
+
 		dnshdr recvhdr;
 		memcpy(&recvhdr, buf, 12);
 		if(recvhdr.rcode!=0){
@@ -501,10 +512,18 @@ int main(int argc, char** argv){
 				cout << "TTL: " << cache_record.ttl << endl;
 				cout << "IP Address: " << cache_record.ip << endl << endl;
 
-				create_packet(buf, recvbuf, cache_record);
+				
+				memcpy(recvbuf, &cache_record.resp, BUF_SIZE);
+				uint16_t id = recvhdr.id;
+				memcpy(recvbuf, &id, 2);
+				
+				printf("Decimal: %d Hex: %x\n", id, id);
 				
 				for(int k=0; k<BUF_SIZE; k++){
-					printf("\n%x", recvbuf[k]);
+					printf("%2x ", recvbuf[k]);
+					if(k%16 == 0 && k != 0){
+						printf("\n");
+					}
 				}
 			}
 			else{
