@@ -278,15 +278,34 @@ bool check_cache(string name, vector<struct res_record>& cache, res_record& cach
 	return answer_found;
 }
 
+
 void update_ttl(vector<struct res_record>& cache){
+	printf("\n\nUpdating TTL\n\n");
 	time_t current_time;
 	time(&current_time);
-	time_t elapsed_time;
+	time_t elapsed_time = 0;
+	int pos;
+	int ttl;
 	vector<int> deletions;
 	for(int i=0; i<cache.size(); i++){
+		pos = 16 + NAME_LENGTH + TYPE_LENGTH + CLASS_LENGTH;
+		elapsed_time = 0;
 		elapsed_time = current_time - cache[i].in_time;
-		cache[i].ttl -= elapsed_time;
-		if(cache[i].ttl <= 0 || cache[i].ttl > current_time){
+		//printf("\nElapsed: %d  Current: %d  In-Time: %d\n",elapsed_time, current_time, cache[i].in_time);
+		//TODO: Make this timer better
+		cache[i].ttl = cache[i].ttl - elapsed_time;
+		if(cache[i].ttl > current_time){
+			cache[i].ttl = 0;
+		}
+		pos += print_reply(cache[i].resp);
+		//printf("\n\nnum Answers: %x\n", cache[i].resp[7]);
+		for(int j=0; j<cache[i].resp[7]; j++){
+			ttl = ntohl(cache[i].ttl);
+			memcpy(&cache[i].resp[pos], &ttl, TTL_LENGTH);
+			pos = pos + NAME_LENGTH + TYPE_LENGTH + CLASS_LENGTH +TTL_LENGTH + 4 + DATA_LENGTH_SIZE;
+		}
+		//cache[i].resp[]
+		if(cache[i].ttl <= 0){			
 			 deletions.push_back(i);
 		}
 	}
