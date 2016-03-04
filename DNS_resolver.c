@@ -301,7 +301,11 @@ void update_ttl(vector<struct res_record>& cache){
 		//printf("\n\nnum Answers: %x\n", cache[i].resp[7]);
 		for(int j=0; j<cache[i].resp[7]; j++){
 			ttl = ntohl(cache[i].ttl);
-			memcpy(&cache[i].resp[pos], &ttl, TTL_LENGTH);
+			if(cache[i].rr_type = ANSWER){
+				if(cache[i]._type == TYPE_A){
+					memcpy(&cache[i].resp[pos], &ttl, TTL_LENGTH);
+				}
+			}
 			pos = pos + NAME_LENGTH + TYPE_LENGTH + CLASS_LENGTH +TTL_LENGTH + 4 + DATA_LENGTH_SIZE;
 		}
 		//cache[i].resp[]
