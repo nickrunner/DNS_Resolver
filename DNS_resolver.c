@@ -55,6 +55,7 @@ typedef struct res_record{
 	unsigned int ttl;
 	string ip;
 	char resp[BUF_SIZE];
+	time_t in_time;
 }res_record;
 
 void encodename(const char* src, char* dst){
@@ -177,14 +178,14 @@ int get_answer(char* buf, int original_namelength, int numAnswers, vector<struct
 	//Cache stuff
 	if(rr_type_p == NAME_SERVER){
 		tmp_record.name = auth;
-		cout << "thinks it's nameserver" << endl;
+		//cout << "thinks it's nameserver" << endl;
 	}
 	else{
 		decodename(buf, 12, temp);
 		std::string tmp_str(temp);
 		tmp_record.name = tmp_str;
-		cout << "tmp_record.name " << tmp_record.name << endl;
-		cout << "thinks it's answer" << endl;
+		//cout << "tmp_record.name " << tmp_record.name << endl;
+		//cout << "thinks it's answer" << endl;
 	}
 	tmp_record.rr_type = rr_type_p;
 	//pos should be the start of a resource record
@@ -221,6 +222,7 @@ int get_answer(char* buf, int original_namelength, int numAnswers, vector<struct
 
 		if(dataLen == ipv4Len){
 			root_hints.push_back(tmp_record.ip);
+			time(&tmp_record.in_time); 
 			cache.push_back(tmp_record);
 		}
 
@@ -253,7 +255,8 @@ void print_cache(vector<struct res_record>& cache){
 		cout << "Type: " << cache[i]._type << endl;
 		cout << "Class: " << cache[i]._class << endl;
 		cout << "TTL: " << cache[i].ttl << endl;
-		cout << "IP Address: " << cache[i].ip << endl << endl;
+		cout << "IP Address: " << cache[i].ip << endl;
+		cout << "In Time: " << cache[i].in_time << endl << endl;
 	}
 }
 
@@ -274,6 +277,27 @@ bool check_cache(string name, vector<struct res_record>& cache, res_record& cach
 	}
 	return answer_found;
 }
+
+void update_ttl(vector<struct res_record>& cache){
+	time_t current_time;
+	time(&current_time);
+	time_t elapsed_time;
+	vector<int> deletions;
+	for(int i=0; i<cache.size(); i++){
+		elapsed_time = current_time - cache[i].in_time;
+		cache[i].ttl -= elapsed_time;
+		if(cache[i].ttl <= 0 || cache[i].ttl > current_time){
+			 deletions.push_back(i);
+		}
+	}
+	for(int j=0; j<deletions.size(); j++){
+		cache.erase(cache.begin()+deletions[j]);
+		for(int k=j; k<deletions.size(); k++){
+			deletions[k]--; 
+		}
+	}
+}
+
 
 int main(int argc, char** argv){
 
@@ -362,6 +386,7 @@ int main(int argc, char** argv){
 			decodename(buf, 12, temp);
 			std::string tmp_str(temp);
 			int prevPeriod = 0;
+			update_ttl(cache);
 			while(cache_record.rr_type == -1 && prevPeriod != -1){
 				prevPeriod = tmp_str.find(".");
 				cout << "Checking for " << tmp_str << endl;
@@ -475,6 +500,7 @@ int main(int argc, char** argv){
 				cout << "called answer" << endl;
 				
 			}
+			
 			sendto(sockfd, recvbuf, BUF_SIZE, 0, (struct sockaddr*)&dig_client_addr, sizeof(dig_client_addr));
 
 		}
