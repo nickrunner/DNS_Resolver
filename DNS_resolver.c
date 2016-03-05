@@ -1,3 +1,9 @@
+/***************************************************************
+* Nick Schrock and Matt Lukas
+* CIS 457 DNS Resolver
+* 3/4/2016
+*****************************************************************/
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -291,8 +297,6 @@ void update_ttl(vector<struct res_record>& cache){
 		pos = 16 + NAME_LENGTH + TYPE_LENGTH + CLASS_LENGTH;
 		elapsed_time = 0;
 		elapsed_time = current_time - cache[i].in_time;
-		//printf("\nElapsed: %d  Current: %d  In-Time: %d\n",elapsed_time, current_time, cache[i].in_time);
-		//TODO: Make this timer better
 		cache[i].ttl = cache[i].ttl - elapsed_time;
 		if(cache[i].ttl > current_time){
 			cache[i].ttl = 0;
@@ -312,6 +316,7 @@ void update_ttl(vector<struct res_record>& cache){
 		if(cache[i].ttl <= 0){			
 			 deletions.push_back(i);
 		}
+		time(&cache[i].in_time);
 	}
 	for(int j=0; j<deletions.size(); j++){
 		cache.erase(cache.begin()+deletions[j]);
@@ -412,7 +417,6 @@ int main(int argc, char** argv){
 			update_ttl(cache);
 			while(cache_record.rr_type == -1 && prevPeriod != -1){
 				prevPeriod = tmp_str.find(".");
-				cout << "Checking for " << tmp_str << endl;
 				cache_answers = check_cache(tmp_str, cache, cache_record);
 				tmp_str = tmp_str.substr(tmp_str.find(".")+1);
 			}
