@@ -224,6 +224,7 @@ int get_answer(char* buf, int original_namelength, int numAnswers, vector<struct
 		pos += dataLen;
 		//cout << "IP Address: " << tmp_record.ip << endl << endl;
 
+		memset(tmp_record.resp, 0, BUF_SIZE);
 		memcpy(tmp_record.resp, buf, BUF_SIZE);
 
 		if(dataLen == ipv4Len){
@@ -302,17 +303,18 @@ void update_ttl(vector<struct res_record>& cache){
 			cache[i].ttl = 0;
 		}
 		pos += print_reply(cache[i].resp);
-		//printf("\n\nnum Answers: %x\n", cache[i].resp[7]);
 		for(int j=0; j<cache[i].resp[7]; j++){
 			ttl = ntohl(cache[i].ttl);
 			if(cache[i].rr_type = ANSWER){
-				if(cache[i]._type == TYPE_A){
+				if(cache[i].resp[pos-CLASS_LENGTH-1] == TYPE_A){
+					printf("\n\nPos: %d\nOld Data at pos: %x\nData going in: %d\n", pos, cache[i].resp[pos], ttl);
 					memcpy(&cache[i].resp[pos], &ttl, TTL_LENGTH);
+					printf("New Data at pos: %x\n\n", cache[i].resp[pos]);
 				}
 			}
-			pos = pos + NAME_LENGTH + TYPE_LENGTH + CLASS_LENGTH +TTL_LENGTH + 4 + DATA_LENGTH_SIZE;
+			printf("Data Length: %d", cache[i].resp[pos+TTL_LENGTH+1]);
+			pos = pos + NAME_LENGTH + TYPE_LENGTH + CLASS_LENGTH +TTL_LENGTH + cache[i].resp[pos+TTL_LENGTH+1] + DATA_LENGTH_SIZE;
 		}
-		//cache[i].resp[]
 		if(cache[i].ttl <= 0){			
 			 deletions.push_back(i);
 		}
